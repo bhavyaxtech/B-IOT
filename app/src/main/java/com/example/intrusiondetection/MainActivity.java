@@ -52,11 +52,24 @@ public class MainActivity extends AppCompatActivity {
         connectionStatus = findViewById(R.id.connection_status);
 
         createNotificationChannel();
+        requestNotificationPermission();
 
         // Connect to MQTT in background thread
         new Thread(this::connectToMQTT).start();
     }
+    // Ask user to allow notifications (required for Android 13+)
+    private void requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this,
+                    android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
 
+                ActivityCompat.requestPermissions(this,
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        1);
+            }
+        }
+    }
     private void connectToMQTT() {
         try {
             MqttConnectOptions options = new MqttConnectOptions();

@@ -1,5 +1,7 @@
 package com.example.intrusiondetection; // make sure this matches your package name
-
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import android.app.NotificationChannel;

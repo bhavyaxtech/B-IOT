@@ -13,7 +13,10 @@ import android.os.Looper;
 import android.widget.TextView;
 import android.graphics.Color;
 
+import org.eclipse.paho.android.service.MqttAndroidClient;
+import org.eclipse.paho.client.mqttv3.IMqttActionListener;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
+import org.eclipse.paho.client.mqttv3.IMqttToken;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
@@ -25,8 +28,7 @@ import java.text.DateFormat;
 import java.util.Date;
 
 public class MainActivity extends AppCompatActivity {
-
-    private static final String MQTT_BROKER = "tcp://broker.hivemq.com:1883";
+    private static final String MQTT_BROKER = "ws://broker.hivemq.com:8000/mqtt";
     private static final String MQTT_TOPIC  = "myproject/intrusiondetection"; // ← same as ESP8266
     private static final String CLIENT_ID   = "androidClient_" + System.currentTimeMillis();
     private static final String CHANNEL_ID  = "IntrusionAlerts";
@@ -35,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int RESET_DELAY_MS = 5000;
 
     private TextView statusIcon, statusLabel, lastDetection, connectionStatus;
-    private MqttClient mqttClient;
+    private MqttAndroidClient mqttClient;
 
     // Handler is used to schedule the "reset to all clear" after 5 seconds
     private final Handler resetHandler = new Handler(Looper.getMainLooper());
@@ -72,44 +74,93 @@ public class MainActivity extends AppCompatActivity {
     }
     private void connectToMQTT() {
         try {
-            MqttConnectOptions options = new MqttConnectOptions();
+
+            String serverUri =
+                    "ws://broker.hivemq.com:8000/mqtt";
+
+            mqttClient = new MqttAndroidClient(
+                    getApplicationContext(),
+                    serverUri,
+                    CLIENT_ID
+            );
+
+            MqttConnectOptions options =
+                    new MqttConnectOptions();
+
             options.setCleanSession(true);
             options.setAutomaticReconnect(true);
+            options.setConnectionTimeout(30);
+            options.setKeepAliveInterval(60);
 
-            mqttClient = new MqttClient(MQTT_BROKER, CLIENT_ID, new MemoryPersistence());
             mqttClient.setCallback(new MqttCallback() {
 
                 @Override
                 public void connectionLost(Throwable cause) {
-                    updateConnectionStatus("● Disconnected", "#F44336");
+                    updateConnectionStatus(
+                            "● Disconnected",
+                            "#F44336"
+                    );
                 }
 
                 @Override
-                public void messageArrived(String topic, MqttMessage message) {
-                    String time = DateFormat.getDateTimeInstance().format(new Date());
-                    String alertText = "Intrusion Detected @ " + time;
+                public void messageArrived(
+                        String topic,
+                        MqttMessage message) {
 
-                    // 1. Update screen to red alert
+                    String time =
+                            DateFormat.getDateTimeInstance()
+                                    .format(new Date());
+
+                    String alertText =
+                            "Intrusion Detected @ " + time;
+
                     showIntrusionAlert(alertText);
+                    showNotification(
+                            "🚨 Intrusion Alert!",
+                            alertText
+                    );
 
-                    // 2. Fire push notification
-                    showNotification("🚨 Intrusion Alert!", alertText);
-
-                    // 3. Reset screen back to All Clear after 5 seconds
                     scheduleReset();
                 }
 
                 @Override
-                public void deliveryComplete(IMqttDeliveryToken token) { }
+                public void deliveryComplete(
+                        IMqttDeliveryToken token) {}
             });
 
-            mqttClient.connect(options);
-            mqttClient.subscribe(MQTT_TOPIC, 0);
-            updateConnectionStatus("● Connected to MQTT", "#4CAF50");
+            mqttClient.connect(options, null,
+                    new IMqttActionListener() {
 
-        } catch (MqttException e) {
+                        @Override
+                        public void onSuccess(
+                                IMqttToken asyncActionToken) {
+
+                            try {
+                                mqttClient.subscribe(
+                                        MQTT_TOPIC, 0);
+
+                                updateConnectionStatus(
+                                        "● Connected to MQTT",
+                                        "#4CAF50");
+
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(
+                                IMqttToken asyncActionToken,
+                                Throwable exception) {
+
+                            updateConnectionStatus(
+                                    "● Connection Failed",
+                                    "#F44336");
+                        }
+                    });
+
+        } catch (Exception e) {
             e.printStackTrace();
-            updateConnectionStatus("● Connection Failed", "#F44336");
         }
     }
 

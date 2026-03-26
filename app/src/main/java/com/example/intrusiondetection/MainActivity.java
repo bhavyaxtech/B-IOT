@@ -35,11 +35,14 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IntrusionDetection";
 
-    // Try these brokers in order — if one port is blocked, the next one will work
+    // Try these brokers in order — if one is down or blocked, try the next
     private static final String[] BROKER_URIS = {
-            "tcp://broker.hivemq.com:1883",    // Standard MQTT port
-            "ssl://broker.hivemq.com:8883",    // Encrypted MQTT port
-            "wss://broker.hivemq.com:8884/mqtt" // WebSocket Secure (HTTPS-style, rarely blocked)
+            "tcp://broker.hivemq.com:1883",     // HiveMQ - standard
+            "tcp://broker.emqx.io:1883",        // EMQX - standard
+            "ssl://broker.hivemq.com:8883",     // HiveMQ - encrypted
+            "ssl://broker.emqx.io:8883",        // EMQX - encrypted
+            "tcp://test.mosquitto.org:1883",    // Mosquitto - standard
+            "ssl://test.mosquitto.org:8883"     // Mosquitto - encrypted
     };
     private int brokerIndex = 0;
 
@@ -51,8 +54,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int RESET_DELAY_MS = 5000;
 
     // Connection retry settings
-    private static final int MAX_RETRIES = 3;
-    private static final int RETRY_DELAY_MS = 3000;
+    private static final int MAX_RETRIES = 2;
+    private static final int RETRY_DELAY_MS = 2000;
 
     private TextView statusIcon, statusLabel, lastDetection, connectionStatus, debugInfo;
     private MqttAsyncClient mqttClient;

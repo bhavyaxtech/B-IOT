@@ -27,7 +27,6 @@ import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
 import javax.net.ssl.SSLSocketFactory;
 
-import java.net.InetAddress;
 import java.text.DateFormat;
 import java.util.Date;
 
@@ -35,11 +34,9 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IntrusionDetection";
 
-    // Try these brokers in order — if one is down or blocked, try the next
+    // Brokers to try in order — EMQX is primary, Mosquitto is backup
     private static final String[] BROKER_URIS = {
-            "tcp://broker.hivemq.com:1883",     // HiveMQ - standard
             "tcp://broker.emqx.io:1883",        // EMQX - standard
-            "ssl://broker.hivemq.com:8883",     // HiveMQ - encrypted
             "ssl://broker.emqx.io:8883",        // EMQX - encrypted
             "tcp://test.mosquitto.org:1883",    // Mosquitto - standard
             "ssl://test.mosquitto.org:8883"     // Mosquitto - encrypted
@@ -57,7 +54,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int MAX_RETRIES = 2;
     private static final int RETRY_DELAY_MS = 2000;
 
-    private TextView statusIcon, statusLabel, lastDetection, connectionStatus, debugInfo;
+    private TextView statusIcon, statusLabel, lastDetection, connectionStatus;
     private MqttAsyncClient mqttClient;
 
     // Handler is used to schedule the "reset to all clear" after 5 seconds
@@ -73,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
         statusLabel = findViewById(R.id.status_label);
         lastDetection = findViewById(R.id.last_detection);
         connectionStatus = findViewById(R.id.connection_status);
-        debugInfo = findViewById(R.id.debug_info);
 
         createNotificationChannel();
         requestNotificationPermission();
@@ -96,17 +92,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void connectToMQTT() {
-        // First test if the phone can reach the broker at all
-        updateDebug("Testing network...");
-        try {
-            InetAddress address = InetAddress.getByName("broker.hivemq.com");
-            updateDebug("DNS OK: " + address.getHostAddress());
-        } catch (Exception e) {
-            updateDebug("DNS FAILED: " + e.getMessage());
-            updateConnectionStatus("● Cannot reach broker — DNS failed", "#F44336");
-            return;
-        }
-
         brokerIndex = 0;
         createClientAndConnect();
     }
@@ -194,7 +179,6 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
                     Log.e(TAG, "Attempt " + attempt + " failed on " + broker, exception);
-                    updateDebug("Fail #" + attempt + " on " + broker + ": " + exception.getMessage());
 
                     if (attempt < MAX_RETRIES) {
                         updateConnectionStatus("● Retrying... (" + attempt + "/" + MAX_RETRIES + " failed)", "#FF9800");
@@ -226,7 +210,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             // All brokers and all retries exhausted
             updateConnectionStatus("● Connection Failed — check internet", "#F44336");
-            updateDebug("All 9 attempts failed. Screenshot this and send to developer.");
         }
     }
 
@@ -266,22 +249,6 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void updateDebug(String text) {
-        Log.d(TAG, "DEBUG: " + text);
-        runOnUiThread(() -> {
-            String current = debugInfo.getText().toString();
-            // Keep last few lines
-            String[] lines = current.split("\n");
-            if (lines.length > 4) {
-                StringBuilder sb = new StringBuilder();
-                for (int i = lines.length - 4; i < lines.length; i++) {
-                    sb.append(lines[i]).append("\n");
-                }
-                current = sb.toString();
-            }
-            debugInfo.setText(current + text + "\n");
-        });
-    }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

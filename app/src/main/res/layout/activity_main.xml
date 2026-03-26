@@ -41,6 +41,17 @@
         android:layout_height="wrap_content"
         android:text="● Connecting..."
         android:textSize="14sp"
-        android:textColor="#999999"/>
+        android:textColor="#999999"
+        android:layout_marginBottom="16dp"/>
+
+    <TextView
+        android:id="@+id/debug_info"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textSize="11sp"
+        android:textColor="#888888"
+        android:gravity="center"
+        android:maxLines="6"/>
 
 </LinearLayout>

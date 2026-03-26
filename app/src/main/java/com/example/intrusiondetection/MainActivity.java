@@ -15,6 +15,7 @@ import android.util.Log;
 import android.widget.TextView;
 import android.graphics.Color;
 
+import org.eclipse.paho.client.mqttv3.IMqttActionListener;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.IMqttToken;
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient;
@@ -31,14 +32,18 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IntrusionDetection";
 
-    // Use WebSocket URI for the public HiveMQ broker
-    private static final String MQTT_BROKER = "ws://broker.hivemq.com:8000/mqtt";
+    // Use plain TCP on standard MQTT port 1883 — works on all networks
+    private static final String MQTT_BROKER = "tcp://broker.hivemq.com:1883";
     private static final String MQTT_TOPIC = "myproject/intrusiondetection"; // ← same as ESP8266
     private static final String CLIENT_ID = "androidClient_" + System.currentTimeMillis();
     private static final String CHANNEL_ID = "IntrusionAlerts";
 
     // ⏱️ How long before screen resets back to "All Clear" (5 seconds)
     private static final int RESET_DELAY_MS = 5000;
+
+    // Connection retry settings
+    private static final int MAX_RETRIES = 3;
+    private static final int RETRY_DELAY_MS = 3000;
 
     private TextView statusIcon, statusLabel, lastDetection, connectionStatus;
     private MqttAsyncClient mqttClient;
@@ -88,7 +93,7 @@ public class MainActivity extends AppCompatActivity {
             MqttConnectOptions options = new MqttConnectOptions();
             options.setCleanSession(true);
             options.setAutomaticReconnect(true);
-            options.setConnectionTimeout(30);
+            options.setConnectionTimeout(10);  // 10 seconds — fail fast, don't hang
             options.setKeepAliveInterval(60);
 
             // Use MqttCallbackExtended to get notified on reconnect
@@ -109,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
                 @Override
                 public void connectionLost(Throwable cause) {
                     Log.w(TAG, "Connection lost", cause);
-                    updateConnectionStatus("● Disconnected", "#F44336");
+                    updateConnectionStatus("● Disconnected — reconnecting...", "#FF9800");
                 }
 
                 @Override
@@ -131,12 +136,53 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // Initiate the connection
-            mqttClient.connect(options);
+            // Try connecting with retries
+            attemptConnection(options, 1);
 
         } catch (MqttException e) {
-            Log.e(TAG, "Failed to connect to MQTT", e);
+            Log.e(TAG, "Failed to create MQTT client", e);
             updateConnectionStatus("● Connection Failed", "#F44336");
+        }
+    }
+
+    private void attemptConnection(MqttConnectOptions options, int attempt) {
+        Log.i(TAG, "Connection attempt " + attempt + " of " + MAX_RETRIES);
+        updateConnectionStatus("● Connecting... (attempt " + attempt + "/" + MAX_RETRIES + ")", "#FF9800");
+
+        try {
+            mqttClient.connect(options, null, new IMqttActionListener() {
+                @Override
+                public void onSuccess(IMqttToken asyncActionToken) {
+                    // Success is handled by connectComplete in MqttCallbackExtended
+                }
+
+                @Override
+                public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
+                    Log.e(TAG, "Connection attempt " + attempt + " failed", exception);
+
+                    if (attempt < MAX_RETRIES) {
+                        // Wait and retry
+                        updateConnectionStatus("● Retrying in 3s... (" + attempt + "/" + MAX_RETRIES + " failed)", "#FF9800");
+                        try {
+                            Thread.sleep(RETRY_DELAY_MS);
+                        } catch (InterruptedException ignored) {}
+                        attemptConnection(options, attempt + 1);
+                    } else {
+                        // All retries exhausted
+                        updateConnectionStatus("● Connection Failed — check internet", "#F44336");
+                    }
+                }
+            });
+        } catch (MqttException e) {
+            Log.e(TAG, "Connect call failed on attempt " + attempt, e);
+            if (attempt < MAX_RETRIES) {
+                try {
+                    Thread.sleep(RETRY_DELAY_MS);
+                } catch (InterruptedException ignored) {}
+                attemptConnection(options, attempt + 1);
+            } else {
+                updateConnectionStatus("● Connection Failed — check internet", "#F44336");
+            }
         }
     }
 

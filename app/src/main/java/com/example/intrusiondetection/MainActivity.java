@@ -25,6 +25,8 @@ import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 
+import javax.net.ssl.SSLSocketFactory;
+
 import java.text.DateFormat;
 import java.util.Date;
 
@@ -34,8 +36,9 @@ public class MainActivity extends AppCompatActivity {
 
     // Try these brokers in order — if one port is blocked, the next one will work
     private static final String[] BROKER_URIS = {
-            "tcp://broker.hivemq.com:1883",   // Standard MQTT (works on most networks)
-            "ssl://broker.hivemq.com:8883"     // Encrypted MQTT (works on strict networks)
+            "tcp://broker.hivemq.com:1883",    // Standard MQTT port
+            "ssl://broker.hivemq.com:8883",    // Encrypted MQTT port
+            "wss://broker.hivemq.com:8884/mqtt" // WebSocket Secure (HTTPS-style, rarely blocked)
     };
     private int brokerIndex = 0;
 
@@ -108,6 +111,11 @@ public class MainActivity extends AppCompatActivity {
             options.setAutomaticReconnect(true);
             options.setConnectionTimeout(10);  // 10 seconds — fail fast, don't hang
             options.setKeepAliveInterval(60);
+
+            // Enable SSL for encrypted connections (ssl:// and wss://)
+            if (broker.startsWith("ssl://") || broker.startsWith("wss://")) {
+                options.setSocketFactory(SSLSocketFactory.getDefault());
+            }
 
             // Use MqttCallbackExtended to get notified on reconnect
             mqttClient.setCallback(new MqttCallbackExtended() {

@@ -17,11 +17,7 @@
         android:theme="@style/Theme.IntrusionDetection"
         android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- ✅ Service goes INSIDE <application>, BEFORE <activity> -->
 
-        <service
-            android:name="org.eclipse.paho.android.service.MqttService"
-            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

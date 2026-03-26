@@ -32,8 +32,13 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IntrusionDetection";
 
-    // Use plain TCP on standard MQTT port 1883 — works on all networks
-    private static final String MQTT_BROKER = "tcp://broker.hivemq.com:1883";
+    // Try these brokers in order — if one port is blocked, the next one will work
+    private static final String[] BROKER_URIS = {
+            "tcp://broker.hivemq.com:1883",   // Standard MQTT (works on most networks)
+            "ssl://broker.hivemq.com:8883"     // Encrypted MQTT (works on strict networks)
+    };
+    private int brokerIndex = 0;
+
     private static final String MQTT_TOPIC = "myproject/intrusiondetection"; // ← same as ESP8266
     private static final String CLIENT_ID = "androidClient_" + System.currentTimeMillis();
     private static final String CHANNEL_ID = "IntrusionAlerts";
@@ -83,10 +88,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void connectToMQTT() {
+        brokerIndex = 0;
+        createClientAndConnect();
+    }
+
+    private void createClientAndConnect() {
         try {
+            String broker = BROKER_URIS[brokerIndex];
+            Log.i(TAG, "Trying broker: " + broker);
+
             // Use MqttAsyncClient directly — no Android service wrapper needed
             mqttClient = new MqttAsyncClient(
-                    MQTT_BROKER,
+                    broker,
                     CLIENT_ID,
                     new MemoryPersistence());
 
@@ -101,7 +114,6 @@ public class MainActivity extends AppCompatActivity {
 
                 @Override
                 public void connectComplete(boolean reconnect, String serverURI) {
-                    // Called on initial connect AND on every auto-reconnect
                     Log.i(TAG, (reconnect ? "Reconnected" : "Connected") + " to " + serverURI);
                     try {
                         mqttClient.subscribe(MQTT_TOPIC, 0);
@@ -131,23 +143,22 @@ public class MainActivity extends AppCompatActivity {
                 }
 
                 @Override
-                public void deliveryComplete(IMqttDeliveryToken token) {
-                    // Not used — we only subscribe, not publish
-                }
+                public void deliveryComplete(IMqttDeliveryToken token) {}
             });
 
             // Try connecting with retries
             attemptConnection(options, 1);
 
         } catch (MqttException e) {
-            Log.e(TAG, "Failed to create MQTT client", e);
-            updateConnectionStatus("● Connection Failed", "#F44336");
+            Log.e(TAG, "Failed to create MQTT client for " + BROKER_URIS[brokerIndex], e);
+            tryNextBroker();
         }
     }
 
     private void attemptConnection(MqttConnectOptions options, int attempt) {
-        Log.i(TAG, "Connection attempt " + attempt + " of " + MAX_RETRIES);
-        updateConnectionStatus("● Connecting... (attempt " + attempt + "/" + MAX_RETRIES + ")", "#FF9800");
+        String broker = BROKER_URIS[brokerIndex];
+        Log.i(TAG, "Attempt " + attempt + "/" + MAX_RETRIES + " on " + broker);
+        updateConnectionStatus("● Connecting... (" + attempt + "/" + MAX_RETRIES + ")", "#FF9800");
 
         try {
             mqttClient.connect(options, null, new IMqttActionListener() {
@@ -158,31 +169,38 @@ public class MainActivity extends AppCompatActivity {
 
                 @Override
                 public void onFailure(IMqttToken asyncActionToken, Throwable exception) {
-                    Log.e(TAG, "Connection attempt " + attempt + " failed", exception);
+                    Log.e(TAG, "Attempt " + attempt + " failed on " + broker, exception);
 
                     if (attempt < MAX_RETRIES) {
-                        // Wait and retry
-                        updateConnectionStatus("● Retrying in 3s... (" + attempt + "/" + MAX_RETRIES + " failed)", "#FF9800");
-                        try {
-                            Thread.sleep(RETRY_DELAY_MS);
-                        } catch (InterruptedException ignored) {}
+                        updateConnectionStatus("● Retrying... (" + attempt + "/" + MAX_RETRIES + " failed)", "#FF9800");
+                        try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException ignored) {}
                         attemptConnection(options, attempt + 1);
                     } else {
-                        // All retries exhausted
-                        updateConnectionStatus("● Connection Failed — check internet", "#F44336");
+                        // All retries failed on this broker — try the next one
+                        tryNextBroker();
                     }
                 }
             });
         } catch (MqttException e) {
             Log.e(TAG, "Connect call failed on attempt " + attempt, e);
             if (attempt < MAX_RETRIES) {
-                try {
-                    Thread.sleep(RETRY_DELAY_MS);
-                } catch (InterruptedException ignored) {}
+                try { Thread.sleep(RETRY_DELAY_MS); } catch (InterruptedException ignored) {}
                 attemptConnection(options, attempt + 1);
             } else {
-                updateConnectionStatus("● Connection Failed — check internet", "#F44336");
+                tryNextBroker();
             }
+        }
+    }
+
+    private void tryNextBroker() {
+        brokerIndex++;
+        if (brokerIndex < BROKER_URIS.length) {
+            Log.i(TAG, "Switching to next broker: " + BROKER_URIS[brokerIndex]);
+            updateConnectionStatus("● Trying alternate connection...", "#FF9800");
+            createClientAndConnect();
+        } else {
+            // All brokers and all retries exhausted
+            updateConnectionStatus("● Connection Failed — check internet", "#F44336");
         }
     }
 
